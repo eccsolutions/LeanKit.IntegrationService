@@ -30,6 +30,7 @@ namespace IntegrationService
 		public string Excludes { get; set; }
 		public string Query { get; set; }
 		public string IterationPath { get; set; }
+        public string AreaPath { get; set; }
 		public bool CreateCards { get; set; }
 		public bool UpdateCards { get; set; }
 		public bool UpdateCardLanes { get; set; }

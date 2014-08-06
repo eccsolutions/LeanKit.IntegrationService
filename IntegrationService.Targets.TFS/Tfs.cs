@@ -796,6 +796,11 @@ namespace IntegrationService.Targets.TFS
 				workItem.Fields["System.IterationPath"].Value = boardMapping.IterationPath;
 			}
 
+		    if (!string.IsNullOrEmpty(boardMapping.AreaPath))
+		    {
+		        workItem.Fields["System.AreaPath"].Value = boardMapping.AreaPath;
+		    }
+
 			try 
 			{
 				Log.Debug("Attempting to create Work Item from Card [{0}]", card.Id);
