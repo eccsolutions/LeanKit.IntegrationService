@@ -87,13 +87,23 @@ namespace IntegrationService.Targets.JIRA
 			_restClient = restClient;
 		}
 
-		public override void Init() 
+        protected override string GetServiceName()
+        {
+            return ServiceName;
+        }
+
+        public override void Init() 
 		{
 			if (Configuration != null)
 			{
 				_externalUrlTemplate = Configuration.Target.Url + "/browse/{0}";
 			}
 		}
+
+        protected override void UpdateLeankitLaneInExternalSystem(Card card, string title)
+        {
+            // Do nothing
+        }
 
         protected override void CardUpdated(Card updatedCard, List<string> updatedItems, BoardMapping boardMapping)
         {

@@ -34,6 +34,11 @@ namespace IntegrationService.Tests
         {
         }
 
+        protected override string GetServiceName()
+        {
+            return string.Empty;
+        }
+
         public override void Init()
         {
             InitWasCalled = true;
@@ -41,6 +46,11 @@ namespace IntegrationService.Tests
 
         protected override void UpdateStateOfExternalItem(Card card, List<string> states, BoardMapping boardMapping)
         {
+        }
+
+        protected override void UpdateLeankitLaneInExternalSystem(Card card, string title)
+        {
+            // Do nothing
         }
 
         protected override void CardUpdated(Card card, List<string> updatedItems, BoardMapping boardMapping)

@@ -42,10 +42,20 @@ namespace IntegrationService.Targets.GitHub
 			_restClient = restClient;
 		}
 
+        protected override string GetServiceName()
+        {
+            return ServiceName;
+        }
+
         public override void Init()
         {
             Log.Debug("Initializing GitHub-Pulls...");
 			_externalUrlTemplate = "https://github.com/" + Configuration.Target.Host + "/{0}/pull/{1}";
+        }
+
+        protected override void UpdateLeankitLaneInExternalSystem(Card card, string title)
+        {
+            // Do nothing
         }
 
         protected override void CardUpdated(Card updatedCard, List<string> updatedItems, BoardMapping boardMapping)

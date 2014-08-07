@@ -119,7 +119,15 @@ namespace IntegrationService.Targets.TFS
                 // does this workitem have a corresponding card?
                 var card = LeanKit.GetCardByExternalId(project.Identity.LeanKit, item.Id.ToString(CultureInfo.InvariantCulture));
 
-                if (card == null || !card.ExternalSystemName.Equals(ServiceName, StringComparison.OrdinalIgnoreCase))
+                string cardId = null;
+                if (item.Fields.Contains("Baker.LeankitCardId"))
+                {
+                    var cardIdValue = item.Fields["Baker.LeankitCardId"].Value;
+                    if (cardIdValue != null)
+                        cardId = cardIdValue.ToString();
+                }
+
+                if ((card == null || !card.ExternalSystemName.Equals(ServiceName, StringComparison.OrdinalIgnoreCase)) && string.IsNullOrEmpty(cardId))
                 {
                     Log.Debug("Creating new card for work item [{0}]", item.Id);
                     CreateCardFromWorkItem(project, item);
@@ -293,6 +301,18 @@ namespace IntegrationService.Targets.TFS
 			return null;
 		}
 
+        protected override void SetAssignedUser(Card card, long boardId, long userId)
+        {
+            var workItem = GetWorkItemFromCard(card);
+
+            if (workItem == null)
+                return;
+
+            SetAssignedUser(workItem, boardId, userId);
+
+            if(workItem.IsDirty)
+                workItem.Save();
+        }
 		private void SetAssignedUser(WorkItem workItem, long boardId, long userId)
 		{
 			try
@@ -590,6 +610,11 @@ namespace IntegrationService.Targets.TFS
 				saveCard = true;
 			}
 
+            if (!card.ExternalSystemName.Equals(ServiceName, StringComparison.OrdinalIgnoreCase))
+            {
+                SetExternalSystemInfoOnCard(workItem, card);
+            }
+
             if(saveCard)
             {
                 Log.Info("Updating card [{0}]", card.Id);
@@ -634,42 +659,60 @@ namespace IntegrationService.Targets.TFS
 	        }
         }
 
+        private void SetExternalSystemInfoOnCard(WorkItem workItem, Card card)
+        {
+            card.ExternalCardID = workItem.Id.ToString(CultureInfo.InvariantCulture);
+            card.ExternalSystemName = ServiceName;
+
+            if (_projectHyperlinkService != null)
+            {
+                card.ExternalSystemUrl = _projectHyperlinkService.GetWorkItemEditorUrl(workItem.Id).ToString();
+            }
+        }
+
+        private WorkItem GetWorkItemFromCard(Card card)
+        {
+            if (!card.ExternalSystemName.Equals(ServiceName, StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            if (string.IsNullOrEmpty(card.ExternalCardID))
+                return null;
+
+            Log.Info("Card [{0}] updated.", card.Id);
+
+            int workItemId;
+            try
+            {
+                workItemId = Convert.ToInt32(card.ExternalCardID);
+            }
+            catch (Exception)
+            {
+                Log.Debug("Ignoring card [{0}] with missing external id value.", card.Id);
+                return null;
+            }
+
+            Log.Debug("Attempting to load Work Item [{0}]", workItemId);
+            WorkItem workItem;
+            try
+            {
+                workItem = _projectCollectionWorkItemStore.GetWorkItem(workItemId);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, string.Format("Could not load Work Item [{0}]", workItemId));
+                return null;
+            }
+
+            return workItem;
+        }
+
 	    protected override void CardUpdated(Card card, List<string> updatedItems, BoardMapping boardMapping)
 	    {
-		    if (!card.ExternalSystemName.Equals(ServiceName, StringComparison.OrdinalIgnoreCase))
-			    return;
-
-		    if (string.IsNullOrEmpty(card.ExternalCardID))
-			    return;
-
-		    Log.Info("Card [{0}] updated.", card.Id);
-
-		    int workItemId;
-		    try
-		    {
-			    workItemId = Convert.ToInt32(card.ExternalCardID);
-		    }
-		    catch (Exception)
-		    {
-			    Log.Debug("Ignoring card [{0}] with missing external id value.", card.Id);
-			    return;
-		    }
-
-		    Log.Debug("Attempting to load Work Item [{0}]", workItemId);
-		    WorkItem workItem;
-		    try
-		    {
-			    workItem = _projectCollectionWorkItemStore.GetWorkItem(workItemId);
-		    }
-		    catch (Exception ex)
-		    {
-			    Log.Error(ex, string.Format("Could not load Work Item [{0}]", workItemId));
-			    return;
-		    }
+	        var workItem = GetWorkItemFromCard(card);
 
 		    if (workItem == null)
 		    {
-			    Log.Debug("Failed to find work item matching [{0}].", workItemId);
+			    Log.Debug("Failed to find work item matching [{0}].", card.ExternalCardID);
 			    return;
 		    }
 
@@ -701,6 +744,11 @@ namespace IntegrationService.Targets.TFS
 			    SetDueDate(workItem, card.DueDate);
 		    }
 
+	        if (updatedItems.Contains("Size"))
+	        {
+	            SetSize(workItem, card.Size);
+	        }
+
 		    if (workItem.IsDirty)
 		    {
 			    Log.Info("Updating corresponding work item [{0}]", workItem.Id);
@@ -709,11 +757,11 @@ namespace IntegrationService.Targets.TFS
 
 		    // unsupported properties; append changes to history
 
-		    if (updatedItems.Contains("Size"))
-		    {
-			    workItem.History += "Card size changed to " + card.Size + "\r";
-			    workItem.Save();
-		    }
+            //if (updatedItems.Contains("Size"))
+            //{
+            //    workItem.History += "Card size changed to " + card.Size + "\r";
+            //    workItem.Save();
+            //}
 
 		    if (updatedItems.Contains("Blocked"))
 		    {
@@ -724,18 +772,52 @@ namespace IntegrationService.Targets.TFS
 			    workItem.Save();
 		    }
 
-		    if (updatedItems.Contains("Tags"))
-		    {
-			    workItem.History += "Tags in LeanKit changed to " + card.Tags + "\r";
-			    workItem.Save();
-		    }
+            //if (updatedItems.Contains("Tags"))
+            //{
+            //    workItem.History += "Tags in LeanKit changed to " + card.Tags + "\r";
+            //    workItem.Save();
+            //}
 
 	    }
 
-	    private void SetDueDate(WorkItem workItem, string date)
+        private void SetSize(WorkItem workItem, int size)
+        {
+            if (workItem.Fields.Contains("Story Points"))
+            {
+                double result = size;
+                workItem.Fields["Story Points"].Value = result;
+            }
+
+        }
+
+        private void SetDueDate(WorkItem workItem, string date)
         {
             if (workItem.Fields.Contains("Due Date"))
                 workItem.Fields["Due Date"].Value = date;
+        }
+
+        protected override void UpdateLeankitLaneInExternalSystem(Card card, string title)
+        {
+            var workItem = GetWorkItemFromCard(card);
+
+            if (workItem == null)
+            {
+                Log.Debug("Failed to find work item matching [{0}].", card.ExternalCardID);
+                return;
+            }
+
+            UpdateLeankitLaneInExternalSystem(workItem, title);
+        }
+
+        protected void UpdateLeankitLaneInExternalSystem(WorkItem workItem, string title)
+        {
+            if (workItem.Fields.Contains("Baker.LeankitLane"))
+            {
+                workItem.Fields["Baker.LeankitLane"].Value = title;
+            }
+
+            if (workItem.IsDirty)
+                workItem.Save();
         }
 
 		private Microsoft.TeamFoundation.WorkItemTracking.Client.WorkItemType GetTfsWorkItemType(BoardMapping boardMapping, WorkItemTypeCollection workItemTypes, long cardTypeId)
@@ -780,7 +862,14 @@ namespace IntegrationService.Targets.TFS
 				};
 
 			SetWorkItemPriority(workItem, card.Priority);
-			
+
+		    SetSize(workItem, card.Size);
+
+		    if (workItem.Fields.Contains("Baker.LeankitCardId"))
+		    {
+		        workItem.Fields["Baker.LeankitCardId"].Value = card.Id.ToString();
+		    }
+
 			if (!string.IsNullOrEmpty(card.DueDate))
 			{
 				if (workItem.Fields.Contains("Due Date"))
@@ -809,13 +898,7 @@ namespace IntegrationService.Targets.TFS
 
 				Log.Debug("Created Work Item [{0}] from Card [{1}]", workItem.Id, card.Id);
 
-				card.ExternalCardID = workItem.Id.ToString(CultureInfo.InvariantCulture);
-				card.ExternalSystemName = ServiceName;
-
-				if (_projectHyperlinkService != null) 
-				{
-					card.ExternalSystemUrl = _projectHyperlinkService.GetWorkItemEditorUrl(workItem.Id).ToString();
-				}	
+			    SetExternalSystemInfoOnCard(workItem, card);
 
 				// now that we've created the work item let's try to set it to any matching state defined by lane
 				var states = boardMapping.LaneToStatesMap[card.LaneId];
@@ -835,6 +918,11 @@ namespace IntegrationService.Targets.TFS
 				Log.Error("Unable to create WorkItem from Card [{0}], Exception: {1}", card.Id, ex.Message);
 			}
 		}
+
+        protected override string GetServiceName()
+        {
+            return ServiceName;
+        }
 
         public override void Init()
         {

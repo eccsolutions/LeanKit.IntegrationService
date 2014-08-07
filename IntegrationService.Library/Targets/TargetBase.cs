@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.Configuration;
+using System.Data.SqlTypes;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -25,9 +26,11 @@ namespace IntegrationService.Targets
         protected readonly IConfigurationProvider<Configuration> ConfigurationProvider;
         protected readonly ILocalStorage<AppSettings> LocalStorage;
         protected readonly ILeanKitClientFactory LeanKitClientFactory;
+        protected abstract string GetServiceName();
 
         public abstract void Init();
 		protected abstract void UpdateStateOfExternalItem(Card card, List<string> states, BoardMapping boardMapping);
+        protected abstract void UpdateLeankitLaneInExternalSystem(Card card, string title);
         protected abstract void CardUpdated(Card card, List<string> updatedItems, BoardMapping boardMapping);
 	    protected abstract void CreateNewItem(Card card, BoardMapping boardMapping);
 	    protected abstract void Synchronize(BoardMapping boardMapping);
@@ -224,8 +227,11 @@ namespace IntegrationService.Targets
 										    var card = LeanKit.GetCard(board.Id, ev.CardId);
 										    if (card != null && !string.IsNullOrEmpty(card.ExternalCardID))
 										    {
-												try {
-												    UpdateStateOfExternalItem(card.ToCard(), mapping.LaneToStatesMap[lane.Id.Value], mapping);
+												try
+												{
+												    var cardToUpdate = card.ToCard();
+                                                    UpdateStateOfExternalItem(cardToUpdate, mapping.LaneToStatesMap[lane.Id.Value], mapping);
+                                                    UpdateLeankitLaneInExternalSystem(cardToUpdate, lane.Title);
 												} catch (Exception e) {
 													Log.Error("Exception for UpdateStateOfExternalItem: " + e.Message);
 												}
@@ -525,15 +531,8 @@ namespace IntegrationService.Targets
 
 						    var card = updatedCardEvent.UpdatedCard;
 
-						    if (string.IsNullOrEmpty(card.ExternalCardID) && !string.IsNullOrEmpty(card.ExternalSystemUrl))
-						    {
-							    // try to grab id from url
-							    var pos = card.ExternalSystemUrl.LastIndexOf('=');
-							    if (pos > 0)
-								    card.ExternalCardID = card.ExternalSystemUrl.Substring(pos + 1);
-						    }
-
-						    if (string.IsNullOrEmpty(card.ExternalCardID)) continue; // still invalid; skip this card
+						    if (!IsCardValid(card, boardConfig)) continue;
+					        //continue; // still invalid; skip this card
 
 						    if (card.Title != updatedCardEvent.OriginalCard.Title)
 							    itemsUpdated.Add("Title");
@@ -549,6 +548,8 @@ namespace IntegrationService.Targets
 							    itemsUpdated.Add("Size");
 						    if (card.IsBlocked != updatedCardEvent.OriginalCard.IsBlocked)
 							    itemsUpdated.Add("Blocked");
+					        if (card.AssignedUserIds != updatedCardEvent.OriginalCard.AssignedUserIds)
+					            itemsUpdated.Add("AssignedUserIds");
 
 						    if (itemsUpdated.Count <= 0) continue;
 
@@ -569,15 +570,8 @@ namespace IntegrationService.Targets
 						try
 						{
 							var card = cardBlockedEvent.BlockedCard;
-							if (string.IsNullOrEmpty(card.ExternalCardID) && !string.IsNullOrEmpty(card.ExternalSystemUrl))
-							{
-								// try to grab id from url
-								var pos = card.ExternalSystemUrl.LastIndexOf('=');
-								if (pos > 0)
-									card.ExternalCardID = card.ExternalSystemUrl.Substring(pos + 1);
-							}
 
-							if (string.IsNullOrEmpty(card.ExternalCardID)) continue; // still invalid; skip this card
+						    if (!IsCardValid(card, boardConfig)) continue;
 
 							if (card.IsBlocked != cardBlockedEvent.BlockedCard.IsBlocked)
 								itemsUpdated.Add("Blocked");
@@ -600,15 +594,8 @@ namespace IntegrationService.Targets
 						try
 						{
 							var card = cardUnblockedEvent.UnBlockedCard;
-							if (string.IsNullOrEmpty(card.ExternalCardID) && !string.IsNullOrEmpty(card.ExternalSystemUrl))
-							{
-								// try to grab id from url
-								var pos = card.ExternalSystemUrl.LastIndexOf('=');
-								if (pos > 0)
-									card.ExternalCardID = card.ExternalSystemUrl.Substring(pos + 1);
-							}
 
-							if (string.IsNullOrEmpty(card.ExternalCardID)) continue; // still invalid; skip this card
+						    if (!IsCardValid(card, boardConfig)) continue;
 
 							if (card.IsBlocked != cardUnblockedEvent.UnBlockedCard.IsBlocked)
 								itemsUpdated.Add("Blocked");
@@ -624,8 +611,18 @@ namespace IntegrationService.Targets
 					}					
 				}
 		    }
+		    Log.Info("Checking for Assigned Users");
+		    if (eventArgs.AssignedUsers.Any())
+		    {
+                var itemsUpdated = new List<string>();
+		        foreach (var assignedUserEvent in eventArgs.AssignedUsers)
+		        {
+		            var card = assignedUserEvent.AffectedCard;
 
-
+		            if (!IsCardValid(card, boardConfig)) continue;
+		            SetAssignedUser(card, boardConfig.Identity.LeanKit, eventArgs.AssignedUsers[0].User.Id);
+		        }
+		    }
             // check for content change events
 			if (!boardConfig.CreateTargetItems)
 			{
@@ -675,11 +672,16 @@ namespace IntegrationService.Targets
 						{
 							try
 							{
-								if (!string.IsNullOrEmpty(movedCardEvent.MovedCard.ExternalCardID))
-									UpdateStateOfExternalItem(movedCardEvent.MovedCard, states, boardConfig);
-								else if (boardConfig.CreateTargetItems) 
-									// This may be a task card being moved to the parent board, or card being moved from another board
-									CreateNewItem(movedCardEvent.MovedCard, boardConfig);
+							    if (!string.IsNullOrEmpty(movedCardEvent.MovedCard.ExternalCardID))
+							    {
+							        var lane = movedCardEvent.ToLane;
+							        var laneTitle = string.Format("{0}: {1} ({2})", lane.ClassType, lane.Title, lane.Id);
+							        UpdateStateOfExternalItem(movedCardEvent.MovedCard, states, boardConfig);
+                                    UpdateLeankitLaneInExternalSystem(movedCardEvent.MovedCard, laneTitle);
+							    }
+							    else if (boardConfig.CreateTargetItems)
+							        // This may be a task card being moved to the parent board, or card being moved from another board
+							        CreateNewItem(movedCardEvent.MovedCard, boardConfig);
 							}
 							catch (Exception e)
 							{
@@ -701,7 +703,33 @@ namespace IntegrationService.Targets
 			}
 		}
 
-	    protected void SaveRecentQueryDate(DateTime queryDate)
+        protected virtual void SetAssignedUser(Card card, long boardId, long userId)
+        {
+            // Do nothing
+        }
+
+        private bool IsCardValid(Card card, BoardMapping boardConfig)
+        {
+            if (string.IsNullOrEmpty(card.ExternalCardID) && !string.IsNullOrEmpty(card.ExternalSystemUrl))
+            {
+                // try to grab id from url
+                var pos = card.ExternalSystemUrl.LastIndexOf('=');
+                if (pos > 0)
+                    card.ExternalCardID = card.ExternalSystemUrl.Substring(pos + 1);
+            }
+
+
+            //!card.ExternalSystemName.Equals(ServiceName, StringComparison.OrdinalIgnoreCase)
+            var serviceName = GetServiceName();
+            if (string.IsNullOrEmpty(card.ExternalCardID) || !card.ExternalSystemName.Equals(serviceName))
+            {
+                CreateNewItem(card, boardConfig); // Let's create a card instead since we want a full integration
+                return false;
+            }
+            return true;
+        }
+
+        protected void SaveRecentQueryDate(DateTime queryDate)
 	    {
 		    try
 		    {

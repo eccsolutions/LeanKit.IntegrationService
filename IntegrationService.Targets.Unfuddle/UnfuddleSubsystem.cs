@@ -42,13 +42,23 @@ namespace IntegrationService.Targets.Unfuddle
 			_restClient = restClient;
 		}
 
-		public override void Init() 
+        protected override string GetServiceName()
+        {
+            return ServiceName;
+        }
+
+        public override void Init() 
 		{
 			if (Configuration != null) 
 			{
 				_externalUrlTemplate = Configuration.Target.Url + "/a#/projects/{0}/tickets/by_number/{1}";
 			}
 		}
+
+        protected override void UpdateLeankitLaneInExternalSystem(Card card, string title)
+        {
+            // Do nothing
+        }
 
         protected override void CardUpdated(Card updatedCard, List<string> updatedItems, BoardMapping boardMapping)
         {
