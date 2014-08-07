@@ -100,7 +100,7 @@ namespace IntegrationService.Targets.JIRA
 			}
 		}
 
-        protected override void UpdateLeankitLaneInExternalSystem(Card card, string title)
+        protected override void UpdateLeankitLaneInExternalSystem(Card card, BoardMapping boardMapping)
         {
             // Do nothing
         }

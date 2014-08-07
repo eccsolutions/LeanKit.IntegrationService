@@ -391,6 +391,11 @@ namespace IntegrationService.Tests.UnFuddle
 			{
 				base.CardUpdated(card, updatedItems, boardMapping);
 			}
+
+		    protected override void UpdateLeankitLaneInExternalSystem(Card card, BoardMapping boardMapping)
+		    {
+		        throw new NotImplementedException();
+		    }
 		}
 
 		protected override void OnStartFixture() 
@@ -559,6 +564,11 @@ namespace IntegrationService.Tests.UnFuddle
 			{
 				base.UpdateStateOfExternalItem(card, laneStateMap, boardConfig, true);
 			}
+
+		    protected override void UpdateLeankitLaneInExternalSystem(Card card, BoardMapping boardMapping)
+		    {
+		        throw new NotImplementedException();
+		    }
 		}
 
 		protected override void OnStartFixture() 
@@ -678,6 +688,11 @@ namespace IntegrationService.Tests.UnFuddle
 			{
 				base.UpdateStateOfExternalItem(card, laneStateMap, boardConfig, true);
 			}
+
+		    protected override void UpdateLeankitLaneInExternalSystem(Card card, BoardMapping boardMapping)
+		    {
+		        throw new NotImplementedException();
+		    }
 		}
 
 		protected override void OnStartFixture() 

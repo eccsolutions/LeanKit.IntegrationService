@@ -5,7 +5,10 @@
 //------------------------------------------------------------------------------
 
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using IntegrationService.Util;
 using LeanKit.API.Client.Library.TransferObjects;
 using Microsoft.TeamFoundation.WorkItemTracking.Client;
@@ -15,7 +18,38 @@ namespace IntegrationService.Targets.TFS
 {
     public static class ConversionExtensions
     {
+        public static long? GetClassOfService(this WorkItem workItem, IEnumerable<ClassOfService> classOfServices)
+        {
+            if (!workItem.Fields.Contains("Baker.ClassOfService")) return null;
+            if (workItem.Fields["Baker.ClassOfService"].Value == null) return null;
 
+            long classOfServiceId = 0;
+            var classOfServiceTitle = workItem.Fields["Baker.ClassOfService"].Value.ToString();
+            var result = classOfServices.FirstOrDefault(x => x.Title == classOfServiceTitle);
+
+            if (result != null)
+            {
+                return result.Id;
+            }
+
+            return null;
+        }
+
+        public static void SetClassOfService(this WorkItem workItem, long? id, IEnumerable<ClassOfService> classOfServices)
+        {
+            if (!workItem.Fields.Contains("Baker.ClassOfService")) return;
+            if (id == null) return;
+
+            var title = classOfServices.Where(x => x.Id == id).Select(x => x.Title).FirstOrDefault();
+            workItem.Fields["Baker.ClassOfService"].Value = title;
+        }
+
+        public static string GetLaneTitle(this WorkItem workItem)
+        {
+            if (!workItem.Fields.Contains("Baker.LeankitLane")) return null;
+            var laneTitle = workItem.Fields["Baker.LeankitLane"].Value;
+            return laneTitle == null ? null : laneTitle.ToString();
+        }
         public static int LeanKitPriority(this WorkItem workItem)
         {
 			const int lkPriority = 1; // default to 1 - Normal

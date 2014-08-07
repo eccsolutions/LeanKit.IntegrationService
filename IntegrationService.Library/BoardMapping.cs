@@ -43,6 +43,7 @@ namespace IntegrationService
 		public string ExcludedTypeQuery { get; set; }
 		public IList<Lane> ValidLanes { get; set; } 
 		public IList<CardType> ValidCardTypes { get; set; }
+        public IList<ClassOfService> ValidClassOfServices { get; set; } 
 		public long ArchiveLaneId { get; set; }
 
 		public List<long> LanesFromState(string state)

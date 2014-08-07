@@ -7,6 +7,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using LeanKit.API.Client.Library.TransferObjects;
 
 namespace IntegrationService
 {
@@ -23,7 +24,9 @@ namespace IntegrationService
 			get { return (ChildLaneIds != null && ChildLaneIds.Any()); }
 		}
 
-		public override string ToString() 
+	    public LaneClassType ClassType { get; set; }
+
+	    public override string ToString() 
 		{
 			var sb = new StringBuilder();
 			sb.AppendLine("          Id :                " + Id.ToString());

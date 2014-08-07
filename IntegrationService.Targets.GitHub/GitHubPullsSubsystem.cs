@@ -53,7 +53,7 @@ namespace IntegrationService.Targets.GitHub
 			_externalUrlTemplate = "https://github.com/" + Configuration.Target.Host + "/{0}/pull/{1}";
         }
 
-        protected override void UpdateLeankitLaneInExternalSystem(Card card, string title)
+        protected override void UpdateLeankitLaneInExternalSystem(Card card, BoardMapping boardMapping)
         {
             // Do nothing
         }

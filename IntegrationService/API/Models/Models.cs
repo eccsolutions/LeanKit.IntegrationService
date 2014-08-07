@@ -67,6 +67,8 @@ namespace IntegrationService.API.Models
         public List<TypeMapModel> TypeMap { get; set; } 
         public string Query { get; set; }
         public string IterationPath { get; set; }
+        public string AreaPath { get; set; }
+        public long DefaultCardCreationLaneId { get; set; }
         public List<string> QueryStates { get; set; }
         public string Excludes { get; set; }
         public bool TagCardsWithTargetSystemName { get; set; }
@@ -100,15 +102,17 @@ namespace IntegrationService.API.Models
 		        .ForMember(m => m.Title, opt => opt.MapFrom(s => s.Identity.LeanKitTitle));
 
             Mapper.CreateMap<BoardMappingModel, BoardMapping>()
-                .ForMember(m => m.Identity, opt => opt.ResolveUsing(board => new Identity { LeanKit = board.BoardId, LeanKitTitle = board.Title, Target = board.TargetProjectId, TargetName = board.TargetProjectName }))
-                .ForMember(m => m.Types, opt => opt.ResolveUsing(board => board.TypeMap==null?null:board.TypeMap
-                                                                                .Where(item=>!string.IsNullOrEmpty(item.LeanKitType)&& !string.IsNullOrEmpty(item.TargetType))
-                                                                                .Select(item => new WorkItemType { LeanKit = item.LeanKitType, Target = item.TargetType })))
+                .ForMember(m => m.Identity, opt => opt.ResolveUsing(board => new Identity {LeanKit = board.BoardId, LeanKitTitle = board.Title, Target = board.TargetProjectId, TargetName = board.TargetProjectName}))
+                .ForMember(m => m.Types, opt => opt.ResolveUsing(board => board.TypeMap == null
+                    ? null
+                    : board.TypeMap
+                        .Where(item => !string.IsNullOrEmpty(item.LeanKitType) && !string.IsNullOrEmpty(item.TargetType))
+                        .Select(item => new WorkItemType {LeanKit = item.LeanKitType, Target = item.TargetType})))
                 .ForMember(m => m.ExcludedTypeQuery, opt => opt.Ignore())
                 .ForMember(m => m.ValidLanes, opt => opt.Ignore())
                 .ForMember(m => m.ValidCardTypes, opt => opt.Ignore())
-                .ForMember(m => m.ArchiveLaneId, opt => opt.Ignore())
-				.ForMember(m => m.DefaultCardCreationLaneId, opt => opt.Ignore());
+                .ForMember(m => m.ArchiveLaneId, opt => opt.Ignore());
+            //.ForMember(m => m.DefaultCardCreationLaneId, opt => opt.Ignore());
 
         }
 

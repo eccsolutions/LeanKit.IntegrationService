@@ -55,9 +55,9 @@ namespace IntegrationService.Targets.Unfuddle
 			}
 		}
 
-        protected override void UpdateLeankitLaneInExternalSystem(Card card, string title)
+        protected override void UpdateLeankitLaneInExternalSystem(Card card, BoardMapping boardMapping)
         {
-            // Do nothing
+            // Do Nothing
         }
 
         protected override void CardUpdated(Card updatedCard, List<string> updatedItems, BoardMapping boardMapping)

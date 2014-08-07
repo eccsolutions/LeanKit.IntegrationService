@@ -30,7 +30,7 @@ namespace IntegrationService.Targets
 
         public abstract void Init();
 		protected abstract void UpdateStateOfExternalItem(Card card, List<string> states, BoardMapping boardMapping);
-        protected abstract void UpdateLeankitLaneInExternalSystem(Card card, string title);
+        protected abstract void UpdateLeankitLaneInExternalSystem(Card card, BoardMapping boardMapping);
         protected abstract void CardUpdated(Card card, List<string> updatedItems, BoardMapping boardMapping);
 	    protected abstract void CreateNewItem(Card card, BoardMapping boardMapping);
 	    protected abstract void Synchronize(BoardMapping boardMapping);
@@ -231,7 +231,6 @@ namespace IntegrationService.Targets
 												{
 												    var cardToUpdate = card.ToCard();
                                                     UpdateStateOfExternalItem(cardToUpdate, mapping.LaneToStatesMap[lane.Id.Value], mapping);
-                                                    UpdateLeankitLaneInExternalSystem(cardToUpdate, lane.Title);
 												} catch (Exception e) {
 													Log.Error("Exception for UpdateStateOfExternalItem: " + e.Message);
 												}
@@ -383,6 +382,11 @@ namespace IntegrationService.Targets
 		        }
 	        }
 
+            if (board.ClassesOfService != null && board.ClassesOfService.Any())
+            {
+                boardMapping.ValidClassOfServices = board.ClassesOfService;
+            }
+
 	        if (board.ArchiveTopLevelLaneId.HasValue)
 	        {
 		        boardMapping.ArchiveLaneId = board.ArchiveTopLevelLaneId.Value;
@@ -419,7 +423,8 @@ namespace IntegrationService.Targets
 			        .Select(x => new Lane
 			        {
 				        Id = x.Id.Value, 
-				        Name = x.Title, 
+				        Name = x.Title,
+                        ClassType = x.ClassType,
 				        IsFirst = x.Id == defaultDropLaneId, 
 				        ChildLaneIds = (x.ChildLaneIds != null && x.ChildLaneIds.Any()) ? x.ChildLaneIds : null,
 				        IsLast = (boardMapping.ArchiveLaneId > 0) ? x.Id == boardMapping.ArchiveLaneId : x.Index == maxIndex
@@ -550,6 +555,8 @@ namespace IntegrationService.Targets
 							    itemsUpdated.Add("Blocked");
 					        if (card.AssignedUserIds != updatedCardEvent.OriginalCard.AssignedUserIds)
 					            itemsUpdated.Add("AssignedUserIds");
+					        if (card.ClassOfServiceId != updatedCardEvent.OriginalCard.ClassOfServiceId)
+					            itemsUpdated.Add("ClassOfService");
 
 						    if (itemsUpdated.Count <= 0) continue;
 
@@ -672,16 +679,14 @@ namespace IntegrationService.Targets
 						{
 							try
 							{
-							    if (!string.IsNullOrEmpty(movedCardEvent.MovedCard.ExternalCardID))
+							    if (IsCardValid(movedCardEvent.MovedCard, boardConfig))
 							    {
-							        var lane = movedCardEvent.ToLane;
-							        var laneTitle = string.Format("{0}: {1} ({2})", lane.ClassType, lane.Title, lane.Id);
 							        UpdateStateOfExternalItem(movedCardEvent.MovedCard, states, boardConfig);
-                                    UpdateLeankitLaneInExternalSystem(movedCardEvent.MovedCard, laneTitle);
+							        UpdateLeankitLaneInExternalSystem(movedCardEvent.MovedCard, boardConfig);
 							    }
-							    else if (boardConfig.CreateTargetItems)
-							        // This may be a task card being moved to the parent board, or card being moved from another board
-							        CreateNewItem(movedCardEvent.MovedCard, boardConfig);
+                                //else if (boardConfig.CreateTargetItems)
+                                //    // This may be a task card being moved to the parent board, or card being moved from another board
+                                //    CreateNewItem(movedCardEvent.MovedCard, boardConfig);
 							}
 							catch (Exception e)
 							{
@@ -723,7 +728,8 @@ namespace IntegrationService.Targets
             var serviceName = GetServiceName();
             if (string.IsNullOrEmpty(card.ExternalCardID) || !card.ExternalSystemName.Equals(serviceName))
             {
-                CreateNewItem(card, boardConfig); // Let's create a card instead since we want a full integration
+                if (boardConfig.CreateTargetItems)
+                    CreateNewItem(card, boardConfig); // Let's create a card instead since we want a full integration
                 return false;
             }
             return true;

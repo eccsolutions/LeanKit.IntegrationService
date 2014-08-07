@@ -58,7 +58,9 @@ App.module("Main", function (Main, App, Backbone, Marionette, $, _) {
             "change div#query textarea": "queryChanged",
             "click #radio-simple": "simpleModeSelected",
             "click #radio-custom": "customModeSelected",
-            "change #iteration-paths":"changePath"
+            "change #iteration-paths": "changePath",
+            "change div#area-path textarea": "areaPathChanged",
+            "change div#default-lane-id textarea": "laneChanged"
         },
 
         ui: {
@@ -119,6 +121,13 @@ App.module("Main", function (Main, App, Backbone, Marionette, $, _) {
                 this.$("#radio-custom").prop('checked', true);
             }
 
+            // set area path
+            var areapath = this.model.AreaPath();
+            this.$("div#area-path textarea").val(areapath);
+
+            // set default lane id
+            var defaultlaneid = this.model.DefaultCardCreationLaneId();
+            this.$("div#default-lane-id textarea").val(defaultlaneid);
         },
         
         checkboxChanged: function (e) {
@@ -180,6 +189,14 @@ App.module("Main", function (Main, App, Backbone, Marionette, $, _) {
         
         changePath:function(e) {
             this.model.IterationPath(e.currentTarget.value);
+        },
+
+        areaPathChanged:function(e) {
+            this.model.AreaPath(e.currentTarget.value);
+        },
+
+        laneChanged:function(e) {
+            this.model.DefaultCardCreationLaneId(e.currentTarget.value);
         }
     });
 

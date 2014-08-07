@@ -9,12 +9,14 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Net;
+using System.Runtime.Remoting.Messaging;
 using System.Threading;
 using IntegrationService.Util;
 using LeanKit.API.Client.Library;
 using LeanKit.API.Client.Library.TransferObjects;
 using Microsoft.TeamFoundation.Build.Client;
 using Microsoft.TeamFoundation.Client;
+using Microsoft.TeamFoundation.Client.CommandLine;
 using Microsoft.TeamFoundation.Server;
 using Microsoft.TeamFoundation.WorkItemTracking.Client;
 
@@ -137,8 +139,17 @@ namespace IntegrationService.Targets.TFS
                 else
                 {
                     Log.Info("Previously created a card for work item[{0}]", item.Id);
+
                     if (project.UpdateCards)
+                    {
+                        if (card == null)
+                        {
+                            long id = 0;
+                            long.TryParse(cardId, out id);
+                            card = LeanKit.GetCard(project.Identity.LeanKit, id).ToCard();
+                        }
                         WorkItemUpdated(item, card, project);
+                    }
                     else
                         Log.Info("Skipped card update because 'UpdateCards' is disabled.");
                 }
@@ -155,7 +166,9 @@ namespace IntegrationService.Targets.TFS
 
             var mappedCardType = workItem.LeanKitCardType(project);
 
-            var laneId = project.LanesFromState(workItem.State).First();
+            //var laneId = project.LanesFromState(workItem.State).First();
+            var laneId = project.DefaultCardCreationLaneId;
+
             var card = new Card
                 {
                     Active = true,
@@ -166,7 +179,8 @@ namespace IntegrationService.Targets.TFS
                     TypeName = mappedCardType.Name,
                     LaneId = laneId,
                     ExternalCardID = workItem.Id.ToString(CultureInfo.InvariantCulture),
-                    ExternalSystemName = ServiceName
+                    ExternalSystemName = ServiceName,
+                    ClassOfServiceId = workItem.GetClassOfService(project.ValidClassOfServices)
                 };
 
 			if (workItem.Fields.Contains("Tags") && workItem.Fields["Tags"] != null && workItem.Fields["Tags"].Value != null)
@@ -545,6 +559,15 @@ namespace IntegrationService.Targets.TFS
                 card.Priority = priority;
                 saveCard = true;
             }
+
+            var classOfService = workItem.GetClassOfService(project.ValidClassOfServices);
+            if (classOfService != null && card.ClassOfServiceId != classOfService)
+            {
+                card.ClassOfServiceId = classOfService;
+                saveCard = true;
+            }
+
+            SetLaneTitleOnWorkItem(card, project, workItem);
             
             if(workItem.Fields!=null && 
 				workItem.Fields.Contains("Tags") && 
@@ -610,7 +633,7 @@ namespace IntegrationService.Targets.TFS
 				saveCard = true;
 			}
 
-            if (!card.ExternalSystemName.Equals(ServiceName, StringComparison.OrdinalIgnoreCase))
+            if (card.ExternalSystemName == null || (card.ExternalSystemName != null && !card.ExternalSystemName.Equals(ServiceName, StringComparison.OrdinalIgnoreCase)))
             {
                 SetExternalSystemInfoOnCard(workItem, card);
             }
@@ -749,6 +772,11 @@ namespace IntegrationService.Targets.TFS
 	            SetSize(workItem, card.Size);
 	        }
 
+	        if (updatedItems.Contains("ClassOfService"))
+	        {
+	            workItem.SetClassOfService(card.ClassOfServiceId, boardMapping.ValidClassOfServices);
+	        }
+
 		    if (workItem.IsDirty)
 		    {
 			    Log.Info("Updating corresponding work item [{0}]", workItem.Id);
@@ -796,8 +824,12 @@ namespace IntegrationService.Targets.TFS
                 workItem.Fields["Due Date"].Value = date;
         }
 
-        protected override void UpdateLeankitLaneInExternalSystem(Card card, string title)
+        protected override void UpdateLeankitLaneInExternalSystem(Card card, BoardMapping mapping)
         {
+            string title = GetLaneTitleFromCard(card, mapping);
+
+            if (title == null) return;
+
             var workItem = GetWorkItemFromCard(card);
 
             if (workItem == null)
@@ -807,6 +839,13 @@ namespace IntegrationService.Targets.TFS
             }
 
             UpdateLeankitLaneInExternalSystem(workItem, title);
+        }
+
+        private static string GetLaneTitleFromCard(Card card, BoardMapping mapping)
+        {
+            var lane = mapping.ValidLanes.FirstOrDefault(x => x.Id == card.LaneId);
+
+            return lane == null ? null : string.Format("{0}: {1} ({2})", lane.ClassType, lane.Name, lane.Id);
         }
 
         protected void UpdateLeankitLaneInExternalSystem(WorkItem workItem, string title)
@@ -865,6 +904,8 @@ namespace IntegrationService.Targets.TFS
 
 		    SetSize(workItem, card.Size);
 
+		    SetClassOfService(workItem, card.ClassOfServiceId, boardMapping);
+
 		    if (workItem.Fields.Contains("Baker.LeankitCardId"))
 		    {
 		        workItem.Fields["Baker.LeankitCardId"].Value = card.Id.ToString();
@@ -890,7 +931,9 @@ namespace IntegrationService.Targets.TFS
 		        workItem.Fields["System.AreaPath"].Value = boardMapping.AreaPath;
 		    }
 
-			try 
+		    SetLaneTitleOnWorkItem(card, boardMapping, workItem);
+
+		    try 
 			{
 				Log.Debug("Attempting to create Work Item from Card [{0}]", card.Id);
 
@@ -918,6 +961,39 @@ namespace IntegrationService.Targets.TFS
 				Log.Error("Unable to create WorkItem from Card [{0}], Exception: {1}", card.Id, ex.Message);
 			}
 		}
+
+        private static void SetLaneTitleOnWorkItem(Card card, BoardMapping boardMapping, WorkItem workItem)
+        {
+            var cardLaneTitle = GetLaneTitleFromCard(card, boardMapping);
+            var workItemLaneTitle = workItem.GetLaneTitle();
+
+            if (!string.IsNullOrEmpty(cardLaneTitle))
+            {
+                if (cardLaneTitle != workItemLaneTitle)
+                {
+                    if (workItem.Fields.Contains("Baker.LeankitLane"))
+                    {
+                        workItem.Fields["Baker.LeankitLane"].Value = cardLaneTitle;
+                    }
+                }
+            }
+        }
+
+        private void SetClassOfService(WorkItem workItem, long? classOfServiceId, BoardMapping boardMapping)
+        {
+            if (!workItem.Fields.Contains("Baker.ClassOfService")) return;
+
+            if (classOfServiceId != null && classOfServiceId.Value > 0)
+            {
+                var id = classOfServiceId.Value;
+                var classOfService = boardMapping.ValidClassOfServices.Where(x => x.Id == id).Select(x => x.Title).FirstOrDefault();
+
+                if (classOfService != null)
+                {
+                    workItem.Fields["Baker.ClassOfService"].Value = classOfService;
+                }
+            }
+        }
 
         protected override string GetServiceName()
         {
