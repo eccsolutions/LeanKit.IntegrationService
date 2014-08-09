@@ -567,7 +567,7 @@ namespace IntegrationService.Targets.TFS
                 saveCard = true;
             }
 
-            SetLaneTitleOnWorkItem(card, project, workItem);
+            //SetLaneTitleOnWorkItem(card, project, workItem);
             
             if(workItem.Fields!=null && 
 				workItem.Fields.Contains("Tags") && 
@@ -579,11 +579,13 @@ namespace IntegrationService.Targets.TFS
 				// with what is in TFS. Instead we can only add TFS tags to LK
 				if (!string.IsNullOrEmpty(tfsTags))
 				{
-					var tfsTagsArr = tfsTags.Split(',');
+					var tfsTagsArr = tfsTags.Split(';');
 					foreach (var tag in tfsTagsArr)
 					{
-						if (card.Tags.ToLowerInvariant().Contains(tag.ToLowerInvariant())) continue;
-						if (card.Tags == string.Empty)
+                        if(card.Tags != null)
+                            if (card.Tags.ToLowerInvariant().Contains(tag.ToLowerInvariant())) continue;
+
+						if (string.IsNullOrEmpty(card.Tags))
 							card.Tags = tag;
 						else
 							card.Tags += "," + tag;
@@ -776,6 +778,8 @@ namespace IntegrationService.Targets.TFS
 	        {
 	            workItem.SetClassOfService(card.ClassOfServiceId, boardMapping.ValidClassOfServices);
 	        }
+
+	        SetLaneTitleOnWorkItem(card, boardMapping, workItem);
 
 		    if (workItem.IsDirty)
 		    {
