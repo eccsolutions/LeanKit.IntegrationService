@@ -517,6 +517,31 @@ namespace IntegrationService.Targets
 		    Log.Debug(String.Format("Received board changed event for board [{0}]", boardId));
 
             // check for content change events
+            if (!boardConfig.CreateTargetItems)
+            {
+                Log.Info("Skipped adding target items because 'AddTargetItems' is disabled.");
+            }
+            else
+            {
+                Log.Info("Checking for added cards.");
+                if (eventArgs.AddedCards.Any())
+                {
+                    foreach (var newCard in eventArgs.AddedCards.Select(cardAddEvent => cardAddEvent.AddedCard)
+                        .Where(newCard => newCard != null && string.IsNullOrEmpty(newCard.ExternalCardID)))
+                    {
+                        try
+                        {
+                            CreateNewItem(newCard, boardConfig);
+                        }
+                        catch (Exception e)
+                        {
+                            string.Format("Error processing newly created card, [{0}]: {1}", newCard.Id, e.Message).Error(e);
+                        }
+                    }
+                }
+            }
+
+            // check for content change events
 		    if (!boardConfig.UpdateTargetItems)
 		    {
 		        Log.Info("Skipped target item update because 'UpdateTargetItems' is disabled.");
@@ -618,6 +643,7 @@ namespace IntegrationService.Targets
 					}					
 				}
 		    }
+
 		    Log.Info("Checking for Assigned Users");
 		    if (eventArgs.AssignedUsers.Any())
 		    {
@@ -630,30 +656,6 @@ namespace IntegrationService.Targets
 		            SetAssignedUser(card, boardConfig.Identity.LeanKit, eventArgs.AssignedUsers[0].User.Id);
 		        }
 		    }
-            // check for content change events
-			if (!boardConfig.CreateTargetItems)
-			{
-				Log.Info("Skipped adding target items because 'AddTargetItems' is disabled.");
-			}
-			else
-			{
-				Log.Info("Checking for added cards.");
-				if (eventArgs.AddedCards.Any())
-				{
-					foreach (var newCard in eventArgs.AddedCards.Select(cardAddEvent => cardAddEvent.AddedCard)
-						.Where(newCard => newCard != null && string.IsNullOrEmpty(newCard.ExternalCardID)))
-					{
-						try
-						{
-							CreateNewItem(newCard, boardConfig);
-						}
-						catch (Exception e)
-						{
-							string.Format("Error processing newly created card, [{0}]: {1}", newCard.Id, e.Message).Error(e);
-						}
-					}
-				}
-			}
 
 			//Ignore all other events except for MovedCardEvents
 			if (!eventArgs.MovedCards.Any()) 
@@ -728,7 +730,7 @@ namespace IntegrationService.Targets
             var serviceName = GetServiceName();
             if (string.IsNullOrEmpty(card.ExternalCardID) || !card.ExternalSystemName.Equals(serviceName))
             {
-                if (boardConfig.CreateTargetItems)
+                if (boardConfig.CreateTargetItems && card.ExternalSystemName.Equals("CreateWorkItem"))
                     CreateNewItem(card, boardConfig); // Let's create a card instead since we want a full integration
                 return false;
             }
