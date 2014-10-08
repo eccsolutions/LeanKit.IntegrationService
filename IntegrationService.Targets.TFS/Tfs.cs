@@ -11,6 +11,7 @@ using System.Linq;
 using System.Net;
 using System.Runtime.Remoting.Messaging;
 using System.Threading;
+using IntegrationService.Targets.TFS.Model;
 using IntegrationService.Util;
 using LeanKit.API.Client.Library;
 using LeanKit.API.Client.Library.TransferObjects;
@@ -170,33 +171,21 @@ namespace IntegrationService.Targets.TFS
             var laneId = project.DefaultCardCreationLaneId;
 
             var card = new Card
-                {
-                    Active = true,
-                    Title = workItem.Title,
-                    Description = workItem.LeanKitDescription(GetTfsVersion()),
-                    Priority = workItem.LeanKitPriority(),
-                    TypeId = mappedCardType.Id,
-                    TypeName = mappedCardType.Name,
-                    LaneId = laneId,
-                    ExternalCardID = workItem.Id.ToString(CultureInfo.InvariantCulture),
-                    ExternalSystemName = ServiceName,
-                    ClassOfServiceId = workItem.GetClassOfService(project.ValidClassOfServices)
-                };
+            {
+                Active = true,
+                Title = workItem.Title,
+                Description = workItem.LeanKitDescription(GetTfsVersion()),
+                Priority = workItem.LeanKitPriority(),
+                TypeId = mappedCardType.Id,
+                TypeName = mappedCardType.Name,
+                LaneId = laneId,
+                ExternalCardID = workItem.Id.ToString(CultureInfo.InvariantCulture),
+                ExternalSystemName = ServiceName,
+                ClassOfServiceId = workItem.GetClassOfService(project.ValidClassOfServices),
+                Tags = workItem.GetTags()
+            };
 
-			if (workItem.Fields.Contains("Tags") && workItem.Fields["Tags"] != null && workItem.Fields["Tags"].Value != null)
-			{
-				card.Tags = workItem.Fields["Tags"].Value.ToString();
-			}
-
-            if (project.TagCardsWithTargetSystemName && (card.Tags == null || !card.Tags.Contains(ServiceName))) 
-			{
-				if (string.IsNullOrEmpty(card.Tags))
-					card.Tags = ServiceName;
-				else
-					card.Tags += "," + ServiceName;
-			}
-
-			if (_projectHyperlinkService != null)
+            if (_projectHyperlinkService != null)
 			{
 				card.ExternalSystemUrl = _projectHyperlinkService.GetWorkItemEditorUrl(workItem.Id).ToString();
 			}
@@ -568,30 +557,25 @@ namespace IntegrationService.Targets.TFS
             }
 
             //SetLaneTitleOnWorkItem(card, project, workItem);
-            
-            if(workItem.Fields!=null && 
-				workItem.Fields.Contains("Tags") && 
-				workItem.Fields["Tags"] != null && 
-				workItem.Fields["Tags"].Value.ToString() != card.Tags)
-            {
-	            var tfsTags = workItem.Fields["Tags"].Value.ToString();
-				// since we cannot set the tags in TFS we cannot blindly overwrite the LK tags 
-				// with what is in TFS. Instead we can only add TFS tags to LK
-				if (!string.IsNullOrEmpty(tfsTags))
-				{
-					var tfsTagsArr = tfsTags.Split(';');
-					foreach (var tag in tfsTagsArr)
-					{
-                        if(card.Tags != null)
-                            if (card.Tags.ToLowerInvariant().Contains(tag.ToLowerInvariant())) continue;
 
-						if (string.IsNullOrEmpty(card.Tags))
-							card.Tags = tag;
-						else
-							card.Tags += "," + tag;
-						saveCard = true;
-					}
-				}
+            var tags = workItem.GetTags();
+            if (!string.IsNullOrEmpty(tags))
+            {
+                if (string.IsNullOrEmpty(card.Tags))
+                {
+                    card.Tags = tags;
+                    saveCard = true;
+                }
+                else
+                {
+                    var tagArray = tags.Split(',');
+                    foreach (var tag in tagArray)
+                    {
+                        if (card.Tags.ToLowerInvariant().Contains(tag.ToLowerInvariant())) continue;
+                        card.Tags += "," + tag;
+                        saveCard = true;
+                    }                    
+                }
             }
 
 			if (workItem.Fields != null && (workItem.Fields.Contains("Original Estimate") || workItem.Fields.Contains("Story Points"))) 

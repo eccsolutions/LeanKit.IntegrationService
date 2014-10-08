@@ -78,6 +78,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ConversionExtensions.cs" />
+    <Compile Include="Model\CardExtensions.cs" />
+    <Compile Include="Model\WorkItemExtensions.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="TfsConnection.cs" />
     <Compile Include="Tfs.cs" />
