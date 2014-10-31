@@ -119,9 +119,6 @@ namespace IntegrationService.Targets.TFS
                 Log.Info("Work Item [{0}]: {1}, {2}, {3}",
                                   item.Id, item.Title, item.Fields["System.AssignedTo"].Value, item.State);
 
-                // does this workitem have a corresponding card?
-                var card = LeanKit.GetCardByExternalId(project.Identity.LeanKit, item.Id.ToString(CultureInfo.InvariantCulture));
-
                 string cardId = null;
                 if (item.Fields.Contains("Baker.LeankitCardId"))
                 {
@@ -130,7 +127,18 @@ namespace IntegrationService.Targets.TFS
                         cardId = cardIdValue.ToString();
                 }
 
-                if ((card == null || !card.ExternalSystemName.Equals(ServiceName, StringComparison.OrdinalIgnoreCase)) && string.IsNullOrEmpty(cardId))
+                // does this workitem have a corresponding card?
+                var card = LeanKit.GetCardByExternalId(project.Identity.LeanKit, item.Id.ToString(CultureInfo.InvariantCulture));
+
+                if (card == null && !string.IsNullOrEmpty(cardId))
+                {
+                            long id = 0;
+                            long.TryParse(cardId, out id);
+                    var cardView = LeanKit.GetCard(project.Identity.LeanKit, id);
+                    card = cardView == null ? null : cardView.ToCard();
+                }
+                
+                if ((card == null || !card.ExternalSystemName.Equals(ServiceName, StringComparison.OrdinalIgnoreCase)))
                 {
                     Log.Debug("Creating new card for work item [{0}]", item.Id);
                     CreateCardFromWorkItem(project, item);
@@ -143,12 +151,6 @@ namespace IntegrationService.Targets.TFS
 
                     if (project.UpdateCards)
                     {
-                        if (card == null)
-                        {
-                            long id = 0;
-                            long.TryParse(cardId, out id);
-                            card = LeanKit.GetCard(project.Identity.LeanKit, id).ToCard();
-                        }
                         WorkItemUpdated(item, card, project);
                     }
                     else
@@ -557,25 +559,14 @@ namespace IntegrationService.Targets.TFS
             }
 
             //SetLaneTitleOnWorkItem(card, project, workItem);
-
             var tags = workItem.GetTags();
-            if (!string.IsNullOrEmpty(tags))
+            Log.Info("Comparing Work Item Tags [{0}] to Card Tags [{1}]", tags, card.Tags);
+            
+            //card.CleanUpTags();
+            if (card.Tags != tags)
             {
-                if (string.IsNullOrEmpty(card.Tags))
-                {
-                    card.Tags = tags;
-                    saveCard = true;
-                }
-                else
-                {
-                    var tagArray = tags.Split(',');
-                    foreach (var tag in tagArray)
-                    {
-                        if (card.Tags.ToLowerInvariant().Contains(tag.ToLowerInvariant())) continue;
-                        card.Tags += "," + tag;
-                        saveCard = true;
-                    }                    
-                }
+                card.Tags = tags;
+                saveCard = true;
             }
 
 			if (workItem.Fields != null && (workItem.Fields.Contains("Original Estimate") || workItem.Fields.Contains("Story Points"))) 

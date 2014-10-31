@@ -9,5 +9,14 @@ namespace IntegrationService.Targets.TFS.Model
 {
     public static class CardExtensions
     {
+        public static void CleanUpTags(this Card card)
+        {
+            if (!string.IsNullOrEmpty(card.Tags))
+            {
+                var tags = card.Tags.Split(',');
+                var validTags = tags.Where(tag => !tag.Contains("\\")).ToList();
+                card.Tags = string.Join(",", validTags);
+            }
+        }
     }
 }
