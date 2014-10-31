@@ -29,3 +29,6 @@ node_modules
 packages
 *.sln.DotSettings
 *.bak
+*.ncrunchproject
+*.ncrunchsolution
+*.cache
